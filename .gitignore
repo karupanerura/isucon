@@ -3,3 +3,4 @@ webapp/config/hosts.json
 tools/data/isucon_*
 tools/data/isucon_*/*
 tools/http_load-12mar2006
+isucon_db.sql
