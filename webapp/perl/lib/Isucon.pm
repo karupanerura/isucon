@@ -66,16 +66,20 @@ filter 'recent_commented_articles' => sub {
     }
 };
 
-get '/' => [qw/recent_commented_articles/] => sub {
-    my ( $self, $c )  = @_;
+sub root {
+    my ($self, $c, $template) = @_;
+
     my $rows = $self->dbh->selectall_arrayref(
         'SELECT id,title,body,created_at FROM article ORDER BY id DESC LIMIT 10',
         { Slice => {} });
-    $c->render('index.tx', { articles => $rows });
-};
+    $c->render($template || 'index.tx', { articles => $rows });
 
-get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
-    my ( $self, $c )  = @_;
+}
+
+get '/' => [qw/recent_commented_articles/] => \&root;
+
+sub article {
+    my ( $self, $c, $template )  = @_;
     my $article = $self->cache->get_or_set(
         'article:' . $c->args->{articleid},
         sub {
@@ -95,13 +99,17 @@ get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
             );
         }
     );
-    $c->render('article.tx', { article => $article, comments => $comments });
-};
+    $c->render($template || 'article.tx', { article => $article, comments => $comments });
+}
 
-get '/post' => [qw/recent_commented_articles/] => sub {
-    my ( $self, $c )  = @_;
-    $c->render('post.tx');
-};
+get '/article/:articleid' => [qw/recent_commented_articles/] => \&article;
+
+sub get_post {
+    my ( $self, $c, $template )  = @_;
+    $c->render($template || 'post.tx');
+}
+
+get '/post' => [qw/recent_commented_articles/] => \&get_post;
 
 post '/post' => sub {
     my ( $self, $c )  = @_;
