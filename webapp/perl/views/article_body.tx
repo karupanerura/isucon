@@ -1,0 +1,9 @@
+<div class="article">
+<div class="title"><: $article.title :></div>
+<div class="created"><: $article.created_at :></div>
+<div class="body">
+: for $article.body.split("\n") -> $line {
+<: $line :><br />
+: }
+</div>
+</div>

@@ -9,6 +9,7 @@ use JSON;
 use Cache::Memcached::Fast::Safe;
 use Data::MessagePack;
 use Compress::LZ4 ();
+use Redis::Fast;
 
 our $VERSION = 0.01;
 my $articles_cache = {};
@@ -32,6 +33,12 @@ my $_CACHE = Cache::Memcached::Fast::Safe->new(
     compress_methods   => [\&_compress_lz4, \&_uncompress_lz4],
 );
 sub cache { $_CACHE }
+
+my $_REDIS = Redis::Fast->new(
+    server    => '127.0.0.1:6379',
+    reconnect => 1,
+);
+sub redis { $_REDIS }
 
 sub load_config {
     my $self = shift;
@@ -107,6 +114,13 @@ post '/post' => sub {
     my ( $self, $c )  = @_;
     my $sth = $self->dbh->prepare_cached('INSERT INTO article SET title = ?, body = ?');
     $sth->execute($c->req->param('title'), $c->req->param('body'));
+    my $id = $sth->{mysql_insertid};
+    $self->redis->lpush('isucon:queue', _message_pack({
+        func => 'post_article',
+        args => {
+            id => $id
+        },
+    }));
     $c->redirect($c->req->uri_for('/'));
 };
 
@@ -123,7 +137,7 @@ post '/comment/:articleid' => sub {
     $sth = $self->dbh->prepare_cached('UPDATE article SET last_commented_at = CURRENT_TIMESTAMP() WHERE id = ?');
     $sth->execute($c->args->{articleid});
 
-    my $comment_id = $self->dbh->do('SELECT LAST_INSERT_ID()');
+    my $comment_id = $sth->{mysql_insertid};
     my $key = 'comments:'. $c->args->{articleid};
     my $comments = $self->cache->get($key) || [];
     if (@$comments) {
@@ -139,6 +153,15 @@ post '/comment/:articleid' => sub {
         );
     }
     $self->cache->set($key, $comments);
+
+    my $id = $sth->last_insert_id;
+    $self->redis->lpush('isucon:queue', _message_pack({
+        func => 'post_comment',
+        args => {
+            article_id => $c->args->{articleid},
+            comment_id => $comment_id,
+        },
+    }));
 
     $c->redirect($c->req->uri_for('/article/'.$c->args->{articleid}));
 };
