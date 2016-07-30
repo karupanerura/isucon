@@ -99,3 +99,9 @@
         - name: reload supervisor
           service: name=supervisor state=restarted
       tags: supervisor
+    - block:
+        - name: setup memcached conf
+          copy: src=memcached.conf dest=/etc/memcached.conf owner=root group=root mode=0644
+        - name: reload memcached
+          service: name=memcached state=restarted
+      tags: memcached
