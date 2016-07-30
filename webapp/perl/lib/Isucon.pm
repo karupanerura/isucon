@@ -77,7 +77,7 @@ get '/' => [qw/recent_commented_articles/] => sub {
 get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
     my ( $self, $c )  = @_;
     my $article = $self->cache->get_or_set(
-        $c->args->{articleid},
+        'article:' . $c->args->{articleid},
         sub {
             $self->dbh->selectrow_hashref(
                 'SELECT id,title,body,created_at FROM article WHERE id=?',
@@ -87,7 +87,7 @@ get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
     );
 
     my $comments = $self->cache->get_or_set(
-        $c->args->{articleid},
+        'comments:' . $c->args->{articleid},
         sub {
             $self->dbh->selectall_arrayref(
                 'SELECT id,name,body,created_at FROM comment WHERE article=? ORDER BY id',
@@ -124,7 +124,8 @@ post '/comment/:articleid' => sub {
     $sth->execute($c->args->{articleid});
 
     my $comment_id = $self->dbh->do('SELECT LAST_INSERT_ID()');
-    my $comments = $self->cache->get($c->args->{articleid}) || [];
+    my $key = 'comments:'. $c->args->{articleid};
+    my $comments = $self->cache->get($key) || [];
     if (@$comments) {
         my $inserted_comment = $self->dbh->selectrow_hashref(
             'SELECT id,title,body,created_at FROM comment WHERE id=?',
@@ -137,7 +138,7 @@ post '/comment/:articleid' => sub {
             { Slice => {} }, $c->args->{articleid}
         );
     }
-    $self->cache->set($c->args->{articleid}, $comments);
+    $self->cache->set($key, $comments);
 
     $c->redirect($c->req->uri_for('/article/'.$c->args->{articleid}));
 };
