@@ -9,6 +9,7 @@ use JSON;
 use Cache::Memcached::Fast::Safe;
 use Data::MessagePack;
 use Compress::LZ4 ();
+use Time::Moment;
 
 our $VERSION = 0.01;
 my $articles_cache = {};
@@ -90,7 +91,7 @@ get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
         'comments:' . $c->args->{articleid},
         sub {
             $self->dbh->selectall_arrayref(
-                'SELECT id,name,body,created_at FROM comment WHERE article=? ORDER BY id',
+                'SELECT name,body,created_at FROM comment WHERE article=? ORDER BY id',
                 { Slice => {} }, $c->args->{articleid}
             );
         }
@@ -112,29 +113,34 @@ post '/post' => sub {
 
 post '/comment/:articleid' => sub {
     my ( $self, $c )  = @_;
+    my $tm = Time::Moment->now;
+    # 2016-07-30 09:11:12
+    my $timestamp = $tm->strftime('%Y-%m-%e %H:%M:%S');
+    my $comment = {
+        article => $c->args->{articleid},
+        name => $c->req->param('name'),
+        body => $c->req->param('body'),
+        created_at => $timestamp,
+    };
 
-    my $sth = $self->dbh->prepare_cached('INSERT INTO comment SET article = ?, name =?, body = ?');
+    my $sth = $self->dbh->prepare_cached('INSERT INTO comment SET article = ?, name =?, body = ?, created_at = ?');
     $sth->execute(
-        $c->args->{articleid},
-        $c->req->param('name'), 
-        $c->req->param('body')
+        $comment->{article},
+        $comment->{name},
+        $comment->{body},
+        $comment->{created_at},
     );
 
-    $sth = $self->dbh->prepare_cached('UPDATE article SET last_commented_at = CURRENT_TIMESTAMP() WHERE id = ?');
-    $sth->execute($c->args->{articleid});
+    $sth = $self->dbh->prepare_cached('UPDATE article SET last_commented_at = ? WHERE id = ?');
+    $sth->execute($timestamp, $c->args->{articleid});
 
-    my $comment_id = $self->dbh->do('SELECT LAST_INSERT_ID()');
     my $key = 'comments:'. $c->args->{articleid};
     my $comments = $self->cache->get($key) || [];
     if (@$comments) {
-        my $inserted_comment = $self->dbh->selectrow_hashref(
-            'SELECT id,name,body,created_at FROM comment WHERE id=?',
-            {}, $comment_id
-        );
-        push @$comments, $inserted_comment;
+        push @$comments, $comment;
     } else {
         $comments = $self->dbh->selectall_arrayref(
-            'SELECT id,name,body,created_at FROM comment WHERE article=? ORDER BY id',
+            'SELECT name,body,created_at FROM comment WHERE article=? ORDER BY id',
             { Slice => {} }, $c->args->{articleid}
         );
     }
