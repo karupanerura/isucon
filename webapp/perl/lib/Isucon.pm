@@ -76,20 +76,25 @@ get '/' => [qw/recent_commented_articles/] => sub {
 
 get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
     my ( $self, $c )  = @_;
-    my $article;
+    my $article = $self->cache->get_or_set(
+        'article:' . $c->args->{articleid},
+        sub {
+            $self->dbh->selectrow_hashref(
+                'SELECT id,title,body,created_at FROM article WHERE id=?',
+                {}, $c->args->{articleid}
+            );
+        },
+    );
 
-    if ($articles_cache->{$c->args->{articleid}}) {
-        $article = $articles_cache->{$c->args->{articleid}};
-    } else {
-        $article = $self->dbh->selectrow_hashref(
-        'SELECT id,title,body,created_at FROM article WHERE id=?',
-        {}, $c->args->{articleid});
-        $articles_cache->{$c->args->{articleid}} = $article;
-    }
-    my $comments = $self->dbh->selectall_arrayref(
-        'SELECT name,body,created_at FROM comment WHERE article=? ORDER BY id', 
-        { Slice => {} }, $c->args->{articleid});
-
+    my $comments = $self->cache->get_or_set(
+        'comments:' . $c->args->{articleid},
+        sub {
+            $self->dbh->selectall_arrayref(
+                'SELECT id,name,body,created_at FROM comment WHERE article=? ORDER BY id',
+                { Slice => {} }, $c->args->{articleid}
+            );
+        }
+    );
     $c->render('article.tx', { article => $article, comments => $comments });
 };
 
@@ -117,6 +122,23 @@ post '/comment/:articleid' => sub {
 
     $sth = $self->dbh->prepare_cached('UPDATE article SET last_commented_at = CURRENT_TIMESTAMP() WHERE id = ?');
     $sth->execute($c->args->{articleid});
+
+    my $comment_id = $self->dbh->do('SELECT LAST_INSERT_ID()');
+    my $key = 'comments:'. $c->args->{articleid};
+    my $comments = $self->cache->get($key) || [];
+    if (@$comments) {
+        my $inserted_comment = $self->dbh->selectrow_hashref(
+            'SELECT id,name,body,created_at FROM comment WHERE id=?',
+            {}, $comment_id
+        );
+        push @$comments, $inserted_comment;
+    } else {
+        $comments = $self->dbh->selectall_arrayref(
+            'SELECT id,name,body,created_at FROM comment WHERE article=? ORDER BY id',
+            { Slice => {} }, $c->args->{articleid}
+        );
+    }
+    $self->cache->set($key, $comments);
 
     $c->redirect($c->req->uri_for('/article/'.$c->args->{articleid}));
 };
