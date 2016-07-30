@@ -54,7 +54,7 @@ get '/' => [qw/recent_commented_articles/] => sub {
 
 get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
     my ( $self, $c )  = @_;
-    my ($article, $comments);
+    my $article;
 
     if ($articles_cache->{$c->args->{articleid}}) {
         $article = $articles_cache->{$c->args->{articleid}};
@@ -64,14 +64,9 @@ get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
         {}, $c->args->{articleid});
         $articles_cache->{$c->args->{articleid}} = $article;
     }
-    if ($comments_cache->{$c->args->{articleid}}) {
-        $comments = $comments_cache->{$c->args->{articleid}};
-    } else {
-        $comments = $self->dbh->selectall_arrayref(
+    my $comments = $self->dbh->selectall_arrayref(
         'SELECT name,body,created_at FROM comment WHERE article=? ORDER BY id', 
         { Slice => {} }, $c->args->{articleid});
-        $comments_cache->{$c->args->{articleid}} = $comments;
-    }
 
     $c->render('article.tx', { article => $article, comments => $comments });
 };
