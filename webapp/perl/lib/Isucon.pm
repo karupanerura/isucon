@@ -128,7 +128,7 @@ post '/comment/:articleid' => sub {
     my $comments = $self->cache->get($key) || [];
     if (@$comments) {
         my $inserted_comment = $self->dbh->selectrow_hashref(
-            'SELECT id,title,body,created_at FROM comment WHERE id=?',
+            'SELECT id,name,body,created_at FROM comment WHERE id=?',
             {}, $comment_id
         );
         push @$comments, $inserted_comment;
