@@ -8,6 +8,8 @@ use DBI;
 use JSON;
 
 our $VERSION = 0.01;
+my $articles_cache = {};
+my $comments_cache = {};
 
 sub load_config {
     my $self = shift;
@@ -52,12 +54,20 @@ get '/' => [qw/recent_commented_articles/] => sub {
 
 get '/article/:articleid' => [qw/recent_commented_articles/] => sub {
     my ( $self, $c )  = @_;
-    my $article = $self->dbh->selectrow_hashref(
+    my $article;
+
+    if ($articles_cache->{$c->args->{articleid}}) {
+        $article = $articles_cache->{$c->args->{articleid}};
+    } else {
+        $article = $self->dbh->selectrow_hashref(
         'SELECT id,title,body,created_at FROM article WHERE id=?',
         {}, $c->args->{articleid});
+        $articles_cache->{$c->args->{articleid}} = $article;
+    }
     my $comments = $self->dbh->selectall_arrayref(
         'SELECT name,body,created_at FROM comment WHERE article=? ORDER BY id', 
         { Slice => {} }, $c->args->{articleid});
+
     $c->render('article.tx', { article => $article, comments => $comments });
 };
 
